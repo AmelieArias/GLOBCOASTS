@@ -74,6 +74,7 @@ try:
     from scipy.spatial import distance
     from scipy.ndimage import gaussian_filter1d
     from scipy.optimize import minimize
+    from scipy.optimize import minimize_scalar
 
 except:
     raise ImportError(" ERROR importing scipy")
@@ -221,7 +222,6 @@ DoC       = Dc['Dc'].values #m
 
 # ---------------------------------------------------------------------------------------
 # WORLDWIDE CALIBRATION COEFFICIENT
-c       = np.load(INPUT + 'calibration_coefficient.npy')
 
 # ---------------------------------------------------------------------------------------
 # VALDIATION FILE : WATERLINE POSITION OBTAIN THANKS TO LANDSAT 7 AND 8 PRODUCTS
@@ -230,7 +230,7 @@ Xshores_val = Validation['X_safe'][:,108:-12]
 latX        = Validation['latX'][:]
 lonX        = Validation['lonX'][:]
 
-Xshores_VALIDATION = np.transpose(Xshores_val)
+Xshores_VALIDATION = np.transpose((-1*Xshores_val))
 
 print("# - All files are upload...")
 
@@ -477,24 +477,24 @@ for i, section in tqdm(enumerate(join_section_filtered)):
             TWL[t,j]             = SLA[t,idx] + DAC[t,idx] + (np.cos(incidence_angle[t,j])*SU[t,idx]) 
             
             dTWL[t, j]           = TWL[t,j] - TWL[t-1,j]
-            dx_CS_Hydro[t, j]    = - (TWL[t,j] - TWL[t-1,j]) / (c[idx] * np.tan(beta[t, idx]))  # m
+            dx_CS_Hydro[t, j]    = - (TWL[t,j] - TWL[t-1,j]) / (np.tan(beta[t, idx]))  # m
 
             # MORPHOLOGICAL COMPONENT - LONGSHORE TRANSPORT RATE (KAMPHUIS, 1991)
             incidence_angle_ip1  = incidence_angle[t, j + 1]
             incidence_angle_i    = incidence_angle[t, j]  # radians
 
-            KAMP_mass_i          = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx] ** 1.5) * (c[idx] * np.tan(beta[t, idx]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx] ** 2) * abs(np.sin(2 * incidence_angle_i)) ** 0.6 * np.sign(incidence_angle_i)
+            KAMP_mass_i          = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx] ** 1.5) * (np.tan(beta[t, idx]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx] ** 2) * abs(np.sin(2 * incidence_angle_i)) ** 0.6 * np.sign(incidence_angle_i)
             KAMP_i               = 86400 * 30 * (KAMP_mass_i / (rohs - roh)) / (1.0 - poro)  # m3/month
 
-            KAMP_mass_ip1        = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx + 1] ** 1.5) * (c[idx] * np.tan(beta[t, idx + 1]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx + 1] ** 2) * abs(np.sin(2 * incidence_angle_ip1)) ** 0.6 * np.sign(incidence_angle_ip1)
+            KAMP_mass_ip1        = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx + 1] ** 1.5) * (np.tan(beta[t, idx + 1]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx + 1] ** 2) * abs(np.sin(2 * incidence_angle_ip1)) ** 0.6 * np.sign(incidence_angle_ip1)
             KAMP_ip1             = 86400 * 30 * (KAMP_mass_ip1 / (rohs - roh)) / (1.0 - poro)  # m3/month
 
             DKAMP                = KAMP_ip1 - KAMP_i
             dKAMP[t, j]          = DKAMP
 
-            dx_CS_MorphoTOT[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j]) - ((1 / (c[idx]* np.tan(beta[t, idx]))) - (1 / (c[idx] * np.tan(beta[t - 1, idx]))))) * dt
+            dx_CS_MorphoTOT[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j]) - ((1 / (np.tan(beta[t, idx]))) - (1 / (np.tan(beta[t - 1, idx]))))) * dt
             dx_CS_MorphoLST[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j])) * dt
-            dx_CS_MorphoXshore[t, j] = -((1 / (c[idx] * np.tan(beta[t,idx]))) - (1 / (c[idx] * np.tan(beta[t - 1, idx])))) * dt
+            dx_CS_MorphoXshore[t, j] = -((1 / (np.tan(beta[t,idx]))) - (1 / (np.tan(beta[t - 1, idx])))) * dt
             
             # TOTAL DELTA
             dx_CS_TOTAL[t,j]      = dx_CS_Hydro[t,j] + dx_CS_MorphoTOT[t,j]
@@ -594,6 +594,130 @@ results_dLon               = np.concatenate(r_dLon, axis=1)
 results_dLat               = np.concatenate(r_dLat, axis=1)
 results_index              = np.concatenate(r_index)
 
+# Calibration of our seasonal cycles 
+date_list= pd.date_range('2000-1-1','2019-12-31', freq='ME').strftime("%Y-%m-%d")
+date = pd.DatetimeIndex(date_list)
+num_dates = len(date_list)
+
+VALIDATION_POSITION = {f"Position_{i}": Xshores_val[:, i] for i in range(lon_len)}
+VALIDATION = pd.DataFrame(VALIDATION_POSITION, index=pd.to_datetime(date_list))
+
+MODELE_POSITION = {f"Position_{i}": X_CS_TOTAL[:, i] for i in range(lon_len)}
+MODELE = pd.DataFrame(MODELE_POSITION, index=pd.to_datetime(date_list))
+
+def compute_seasonal_cycle_np(X, dates):
+    """
+    Calcule le cycle saisonnier moyen d'une série temporelle.
+
+    Paramètres:
+    - X (array): Série temporelle.
+    - dates (pd.DatetimeIndex): Index temporel contenant les dates.
+
+    Retourne:
+    - seasonal_cycle (array): Cycle saisonnier moyen (taille = 12 mois).
+    """
+    months = dates.month  # Extraire les mois
+    seasonal_cycle = np.array([np.mean(X[months == m]) for m in range(1, 13)])  # Moyenne par mois
+    return seasonal_cycle
+
+#  Fonction pour ajuster MODELE avant le calcul du cycle saisonnier
+def transform_MODELE(c, X_MODELE):
+    """
+    Applique une transformation linéaire à X_MODELE.
+
+    Paramètres:
+    - c (float): Coefficient multiplicatif.
+    - X_MODELE (array): Série temporelle originale.
+
+    Retourne:
+    - X_transformed (array): Série ajustée.
+    """
+    return X_MODELE * c  # Multiplication par c pour ajustement
+
+#  Fonction pour calculer la RMSE après transformation et cycle saisonnier
+def compute_rmse_c(c, X_MODELE, X_VALIDATION, dates):
+    """
+    Transforme X_MODELE, calcule son cycle saisonnier et compare avec X_VALIDATION.
+
+    Paramètres:
+    - c (float): Coefficient multiplicatif.
+    - X_MODELE (array): Série temporelle originale.
+    - X_VALIDATION (array): Cycle saisonnier de validation (taille 12).
+    - dates (pd.DatetimeIndex): Index temporel contenant les dates.
+
+    Retourne:
+    - RMSE (float): Erreur quadratique moyenne.
+    """
+    X_transformed = transform_MODELE(c, X_MODELE)  # Appliquer la transformation
+    seasonal_cycle_MODELE = compute_seasonal_cycle_np(X_transformed, dates)  # Calcul du cycle saisonnier
+    seasonal_cycle_VALIDATION = compute_seasonal_cycle_np(X_VALIDATION, dates)  # Cycle saisonnier de validation
+    
+    return np.sqrt(np.mean((seasonal_cycle_MODELE - seasonal_cycle_VALIDATION) ** 2))  # Calcul de la RMSE
+# Liste des positions à analyser
+positions_to_plot = [f"Position_{i}" for i in range(lon_len)]
+
+# Stocker les résultats optimaux
+optimal_c_values = {}
+
+#  Boucle sur chaque position pour optimiser c
+for pos in positions_to_plot:
+    X_MODELE = MODELE[pos].values  # Extraire la série MODELE (array)
+    X_VALIDATION = VALIDATION[pos].values  # Extraire la série VALIDATION (array)
+    dates = MODELE.index  # Récupérer les dates
+
+    # Recherche du meilleur c qui minimise la RMSE
+    result = minimize_scalar(
+        compute_rmse_c, 
+        bounds=(-50, 50),  # Plage de recherche
+        args=(X_MODELE, X_VALIDATION, dates), 
+        method="bounded"
+    )
+
+    # Extraction du c optimal
+    c_optimal = result.x
+    rmse_min = result.fun
+    optimal_c_values[pos] = c_optimal  # Stocker le meilleur c
+
+    print(f" {pos} - Meilleur c: {c_optimal:.6f}, RMSE minimale: {rmse_min:.10f}")
+
+    #  Visualisation de l'évolution de la RMSE en fonction de c
+    c_values = np.linspace(c_optimal - 2, c_optimal + 2, 500)  # Générer plusieurs valeurs de c
+    rmse_values = [compute_rmse_c(c, X_MODELE, X_VALIDATION, dates) for c in c_values]  # Calcul de la RMSE
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(c_values, rmse_values, label="RMSE vs c", linewidth=2)
+    plt.axvline(c_optimal, color='red', linestyle='--', label=f"Optimal c = {c_optimal:.6f}")
+    plt.xlabel("Coefficient c")
+    plt.ylabel("RMSE")
+    plt.title(f"Évolution de la RMSE pour {pos}")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    #  Comparaison des cycles saisonniers avant et après ajustement
+    X_transformed_optimal = transform_MODELE(c_optimal, X_MODELE)
+    seasonal_cycle_optimal = compute_seasonal_cycle_np(X_transformed_optimal, dates)
+    seasonal_cycle_original = compute_seasonal_cycle_np(X_MODELE, dates)
+    seasonal_cycle_validation = compute_seasonal_cycle_np(X_VALIDATION, dates)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(seasonal_cycle_validation, label="Cycle Validation (Xval)", color="blue", linewidth=2)
+    plt.plot(seasonal_cycle_original, label="Cycle MODELE Original", color="gray", linestyle="--", alpha=0.7)
+    plt.plot(seasonal_cycle_optimal, label=f"Cycle Ajusté (c={c_optimal:.6f})", color="red", linewidth=2)
+
+    plt.xlabel("Mois")
+    plt.ylabel("Valeur")
+    plt.title(f"Comparaison des Cycles Saisonniers pour {pos}")
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    #  Affichage final des meilleurs coefficients c
+print("\n Meilleurs coefficients c trouvés pour chaque position :")
+for pos, c_value in optimal_c_values.items():
+    print(f"{pos}: c = {c_value:.6f}")
+
+X_GLOBCOASTS_CALIBRE = c_value * X_CS_TOTAL
 
 # In[13]:
 
