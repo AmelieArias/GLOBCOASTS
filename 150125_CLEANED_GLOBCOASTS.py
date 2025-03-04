@@ -492,9 +492,9 @@ for i, section in tqdm(enumerate(join_section_filtered)):
             DKAMP                = KAMP_ip1 - KAMP_i
             dKAMP[t, j]          = DKAMP
 
-            dx_CS_MorphoTOT[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j]) - ((1 / (np.tan(beta[t, idx]))) - (1 / (np.tan(beta[t - 1, idx]))))) * dt
+            dx_CS_MorphoTOT[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j]) + ((1 / (np.tan(beta[t, idx]))) - (1 / (np.tan(beta[t - 1, idx]))))) * dt
             dx_CS_MorphoLST[t, j] = ((-1 / DoC[t,idx]) * ((DKAMP + QrivD[t, idx]) / Ls[t, j])) * dt
-            dx_CS_MorphoXshore[t, j] = -((1 / (np.tan(beta[t,idx]))) - (1 / (np.tan(beta[t - 1, idx])))) * dt
+            dx_CS_MorphoXshore[t, j] = ((1 / (np.tan(beta[t,idx]))) - (1 / (np.tan(beta[t - 1, idx])))) * dt
             
             # TOTAL DELTA
             dx_CS_TOTAL[t,j]      = dx_CS_Hydro[t,j] + dx_CS_MorphoTOT[t,j]
