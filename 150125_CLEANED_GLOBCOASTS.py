@@ -143,15 +143,15 @@ from scipy.signal import butter, filtfilt
 # PATH DEFINITION TO TOOLBOXES DIRECTORY => inputs and functions
 # CHANGE WITH YOUR FILE DIRECTORY
 
-pathin  = 'C:/Users/arias/ownCloud/GLOBCOAST/'
-pathout = 'C:/Users/arias/ownCloud/GLOBCOAST/RESULTS/'
+pathin  = ''
+pathout = 'RESULTS/'
 
 try:
     print("# - Importing main toolboxes and input path...")
     global PTOOL
     # If path to TOOLBOXES is in you environment variables
-    PTOOL = pathin + 'FUNCTION/' 
-    INPUT = pathin + 'INPUT/' 
+    PTOOL = pathin + '' 
+    INPUT = pathin + '' 
 except:
     raise ImportError(" ERROR path is not defined ")
 
@@ -189,7 +189,7 @@ BQART        = BQART_m3/12            # m3/yr --> m3/month
 # ---------------------------------------------------------------------------------------
 # SEADATAS OBTAIN GLOBALLY WITH ERA5 REANALYSIS (Hs,Tp,Dir), ISBA-CTRIP (River discharge), MOG2D(DAC) and CMEMS(SLA)
 SEADATA = xr.open_dataset(INPUT + 'SEADATA_14140pts_1993_2019-analysed.nc',engine='netcdf4')
-
+print(SEADATA)
 SEADATA_lon = SEADATA['lon'].values #[°]
 SEADATA_lat = SEADATA['lat'].values
 
@@ -326,7 +326,7 @@ start_index, end_index = FUNC.find_index(lon, lat,0.55)
 join_section,join_index = FUNC.join_sections(start_index, end_index, lon, lat,0.55)
 
 #3. Selection of the zone that have more than 2 position
-join_section_filtered = [(i, j) for i, j in join_index if abs(i - j) > 2]
+join_section_filtered = [(i, j) for i, j in join_index if np.abs(i - j) > 2]
 
 
 # In[10]:
@@ -483,10 +483,10 @@ for i, section in tqdm(enumerate(join_section_filtered)):
             incidence_angle_ip1  = incidence_angle[t, j + 1]
             incidence_angle_i    = incidence_angle[t, j]  # radians
 
-            KAMP_mass_i          = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx] ** 1.5) * (np.tan(beta[t, idx]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx] ** 2) * abs(np.sin(2 * incidence_angle_i)) ** 0.6 * np.sign(incidence_angle_i)
+            KAMP_mass_i          = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx] ** 1.5) * (np.tan(beta[t, idx]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx] ** 2) * np.abs(np.sin(2 * incidence_angle_i)) ** 0.6 * np.sign(incidence_angle_i)
             KAMP_i               = 86400 * 30 * (KAMP_mass_i / (rohs - roh)) / (1.0 - poro)  # m3/month
 
-            KAMP_mass_ip1        = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx + 1] ** 1.5) * (np.tan(beta[t, idx + 1]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx + 1] ** 2) * abs(np.sin(2 * incidence_angle_ip1)) ** 0.6 * np.sign(incidence_angle_ip1)
+            KAMP_mass_ip1        = 2.33 * (rohs / (rohs - roh)) * (Tp[t, idx + 1] ** 1.5) * (np.tan(beta[t, idx + 1]) ** 0.75) * (d50 ** -0.25) * (Hs[t, idx + 1] ** 2) * np.abs(np.sin(2 * incidence_angle_ip1)) ** 0.6 * np.sign(incidence_angle_ip1)
             KAMP_ip1             = 86400 * 30 * (KAMP_mass_ip1 / (rohs - roh)) / (1.0 - poro)  # m3/month
 
             DKAMP                = KAMP_ip1 - KAMP_i
@@ -598,12 +598,47 @@ results_index              = np.concatenate(r_index)
 date_list= pd.date_range('2000-1-1','2019-12-31', freq='ME').strftime("%Y-%m-%d")
 date = pd.DatetimeIndex(date_list)
 num_dates = len(date_list)
+lon_len = Xshores_val.shape[1]
+
+print(results_X_CS_MorphoTOT.shape)
+print(results_Lat.shape)
+print(results_Lon.shape)
+print(results_dx_CS_Hydro.shape)
+print(results_dx_CS_MorphoLST.shape)
+print(results_dx_CS_MorphoTOT.shape)
+print(results_dx_CS_MorphoXshore.shape)
+print(results_dx_CS_TOTAL.shape)
+
+ds = xr.Dataset(data_vars=
+    {
+        "results_dx_CS_Hydro": (("time", "node"), results_dx_CS_Hydro),
+        "results_dx_CS_MorphoLST": (("time", "node"), results_dx_CS_MorphoLST),
+        "results_dx_CS_MorphoTOT": (("time", "node"), results_dx_CS_MorphoTOT),
+        "results_dx_CS_MorphoXshore": (("time", "node"), results_dx_CS_MorphoXshore),
+        "results_dx_CS_TOTAL": (("time", "node"), results_dx_CS_TOTAL),
+        "x": (("time", "node"), results_Lon_m),
+        "y": (("time", "node"), results_Lat_m)
+    }, 
+    coords={
+        "lon": results_Lon[0,:], 
+        "lat": results_Lat[0,:]
+    }, 
+)
+
+print(ds)
+fig, ax = plt.subplots()
+im = ax.scatter(ds.lon, ds.lat, c = ds.results_dx_CS_TOTAL.mean(dim="time"), vmax=10, vmin=-10)
+plt.colorbar(im)
+plt.show()
+1/0
+# stop here, script does not work aferwards
 
 VALIDATION_POSITION = {f"Position_{i}": Xshores_val[:, i] for i in range(lon_len)}
-VALIDATION = pd.DataFrame(VALIDATION_POSITION, index=pd.to_datetime(date_list))
-
-MODELE_POSITION = {f"Position_{i}": X_CS_TOTAL[:, i] for i in range(lon_len)}
-MODELE = pd.DataFrame(MODELE_POSITION, index=pd.to_datetime(date_list))
+VALIDATION = pd.DataFrame(VALIDATION_POSITION)
+print(VALIDATION)
+print(X_CS_TOTAL.shape)
+MODELE_POSITION = {f"Position_{i}": X_CS_TOTAL[i,:] for i in range(lon_len)}
+MODELE = pd.DataFrame(MODELE_POSITION)
 
 def compute_seasonal_cycle_np(X, dates):
     """
@@ -654,7 +689,7 @@ def compute_rmse_c(c, X_MODELE, X_VALIDATION, dates):
     
     return np.sqrt(np.mean((seasonal_cycle_MODELE - seasonal_cycle_VALIDATION) ** 2))  # Calcul de la RMSE
 # Liste des positions à analyser
-positions_to_plot = [f"Position_{i}" for i in range(lon_len)]
+positions_to_plot = [f"Position_{i}" for i in range(Xshores_val.shape[1])]
 
 # Stocker les résultats optimaux
 optimal_c_values = {}
