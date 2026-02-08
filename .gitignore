@@ -1,0 +1,17 @@
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+
+# Outputs
+outputs/
+
+# Data (si volumineux)
+*.nc
+*.mat
+*.npy
+
+# OS
+.DS_Store
